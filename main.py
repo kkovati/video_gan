@@ -24,7 +24,7 @@ class SquareDataset(torch.utils.data.Dataset):
 class Vae(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        latent_size = 100
+        latent_size = 1000
 
         self.enc_conv_0 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, stride=1)
 
@@ -133,31 +133,38 @@ def latent_mean_loss(latent_batch):
     return torch.mean(torch.abs(torch.mean(latent_batch, dim=0)))
 
 
-def latent_var_loss(latent_batch):
-    return torch.mean(torch.abs(torch.ones(latent_batch.shape[1]) - torch.var(latent_batch, dim=0)))
+def latent_var_loss(latent_batch, device):
+    # return torch.mean(torch.abs(torch.ones(latent_batch.shape[1]) - torch.var(latent_batch, dim=0)))
+    return torch.mean(torch.abs(torch.subtract(torch.var(latent_batch, dim=0), 1)))
 
 
 if __name__ == '__main__':
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Available device: {device.type}")
+
     square_dataset = SquareDataset(5000)
 
     train_dataloader = DataLoader(square_dataset, batch_size=32, shuffle=True)
     # test_dataloader = DataLoader(test_data, batch_size=64, shuffle=True)
 
-    vae = Vae()
+    print("Init VAE")
+    vae = Vae().to(device)
 
-    reconstruction_loss = torch.nn.MSELoss()
+    # reconstruction_loss = torch.nn.MSELoss()
+    reconstruction_loss = torch.nn.L1Loss()
     optimizer = torch.optim.Adam(vae.parameters(), lr=0.01)
 
+    print("Start training")
     n_epoch = 100
     for i_epoch in range(n_epoch):
         avg_lml, avg_lvl, avg_rl = 0, 0, 0
         for i_batch, img_batch in enumerate(train_dataloader):
-            img_batch = torch.unsqueeze(img_batch, dim=1).float()
+            img_batch = torch.unsqueeze(img_batch, dim=1).float().to(device)
             optimizer.zero_grad()
             recon_img_batch, latent_batch = vae(img_batch)
 
             lml = latent_mean_loss(latent_batch)
-            lvl = latent_var_loss(latent_batch)
+            lvl = latent_var_loss(latent_batch, device)
             rl = reconstruction_loss(recon_img_batch, img_batch)
 
             # net_loss = lml + lvl + rl
@@ -172,10 +179,10 @@ if __name__ == '__main__':
 
             if i_batch == len(train_dataloader) - 1:
                 f, axarr = plt.subplots(1, 2)
-                axarr[0].imshow(np.squeeze(img_batch[0].detach().numpy()), vmin=0, vmax=1)
-                axarr[1].imshow(np.squeeze(recon_img_batch[0].detach().numpy()), vmin=0, vmax=1)
-                # plt.show()
-                plt.savefig(f"epoch_{i_epoch}.png")
+                axarr[0].imshow(np.squeeze(img_batch[0].detach().cpu().numpy()), vmin=0, vmax=1)
+                axarr[1].imshow(np.squeeze(recon_img_batch[0].detach().cpu().numpy()), vmin=0, vmax=1)
+                plt.savefig(f"epoch_{i_epoch + 1}.png")
+                plt.clf()
 
         avg_lml /= len(train_dataloader)
         avg_lvl /= len(train_dataloader)
