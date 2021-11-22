@@ -60,24 +60,26 @@ class Vae(torch.nn.Module):
         return x, l
 
 
-"""class VaeV2(torch.nn.Module):
+class VaeV2(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.enc_conv_0 = torch.nn.Conv2d(in_channels=1, out_channels=8, kernel_size=4, stride=2)
-        self.enc_conv_1 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2)
-        self.enc_conv_2 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2)
-        self.enc_conv_3 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2)
-        self.enc_conv_4 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=6, stride=1)
+        latent_size = 128
 
-        self.enc_lin_0 = torch.nn.Linear(8, 10)
+        self.enc_conv_0 = torch.nn.Conv2d(in_channels=1, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.enc_conv_1 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.enc_conv_2 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.enc_conv_3 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.enc_conv_4 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
 
-        self.dec_lin_0 = torch.nn.Linear(10, 8)
+        self.enc_lin_0 = torch.nn.Linear(8 * 4 * 4, latent_size)
 
-        self.dec_conv_0 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=6, stride=1)
-        self.dec_conv_1 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2)
-        self.dec_conv_2 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2)
-        self.dec_conv_3 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2)
-        self.dec_conv_4 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=1, kernel_size=6, stride=2)
+        self.dec_lin_0 = torch.nn.Linear(latent_size, 8 * 4 * 4)
+
+        self.dec_conv_0 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.dec_conv_1 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.dec_conv_2 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.dec_conv_3 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
+        self.dec_conv_4 = torch.nn.ConvTranspose2d(in_channels=8, out_channels=1, kernel_size=4, stride=2, padding=1)
 
         # self._enc_mu = torch.nn.Linear(100, 8)
         # self._enc_log_sigma = torch.nn.Linear(100, 8)
@@ -107,11 +109,13 @@ class Vae(torch.nn.Module):
 
         x = torch.flatten(x, start_dim=1)
         x = self.enc_lin_0(x)
+        x = torch.sigmoid(x)
         l = x
 
         x = self.dec_lin_0(x)
-        x = torch.unsqueeze(x, dim=2)
-        x = torch.unsqueeze(x, dim=3)
+        x = torch.reshape(x, (x.shape[0], 8, 4, 4))
+        # x = torch.unsqueeze(x, dim=2)
+        # x = torch.unsqueeze(x, dim=3)
 
         x = self.dec_conv_0(x)
         x = torch.nn.functional.leaky_relu(x)
@@ -122,11 +126,11 @@ class Vae(torch.nn.Module):
         x = self.dec_conv_3(x)
         x = torch.nn.functional.leaky_relu(x)
         x = self.dec_conv_4(x)
-        x = torch.nn.functional.leaky_relu(x)
+        x = torch.sigmoid(x)
 
         # h_enc = self.encoder(state)
         # z = self._sample_latent(h_enc)
-        return x, l"""
+        return x, l
 
 
 def latent_mean_loss(latent_batch):
@@ -148,7 +152,7 @@ if __name__ == '__main__':
     # test_dataloader = DataLoader(test_data, batch_size=64, shuffle=True)
 
     print("Init VAE")
-    vae = Vae().to(device)
+    vae = VaeV2().to(device)
 
     # reconstruction_loss = torch.nn.MSELoss()
     reconstruction_loss = torch.nn.L1Loss()
