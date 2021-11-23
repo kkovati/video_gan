@@ -6,9 +6,10 @@ from torch.utils.data import DataLoader
 
 
 class SquareDataset(torch.utils.data.Dataset):
-    def __init__(self, size):
+    def __init__(self, size, noise=0.0):
         np.random.seed(0)
         self.points = np.random.rand(size, 2)
+        self.noise = noise
 
     def __len__(self):
         return self.points.shape[0]
@@ -17,8 +18,72 @@ class SquareDataset(torch.utils.data.Dataset):
         # https://stackoverflow.com/questions/10031580/how-to-write-simple-geometric-shapes-into-numpy-arrays
         x, y = (self.points[idx] * 100).astype(int)
         img = np.zeros((128, 128), dtype=float)
+        if self.noise > 0:
+            rand_mask = np.random.rand(128, 128)
+            img[rand_mask > 1 - self.noise] = 1
         img[y:y + 20, x:x + 20] = 1
         return img
+
+
+class DenseAe(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        latent_size = 2048
+        self.enc_lin_0 = torch.nn.Linear(1 * 128 * 128, latent_size)
+        self.dec_lin_0 = torch.nn.Linear(latent_size, 1 * 128 * 128)
+        self.dropout = torch.nn.Dropout(p=0.2)
+
+    def forward(self, x):
+        x = torch.flatten(x, start_dim=1)
+        x = self.enc_lin_0(x)
+        x = torch.tanh(x)
+        l = x
+        x = self.dec_lin_0(x)
+        x = torch.sigmoid(x)
+        # x = self.dropout(x)
+        x = torch.reshape(x, (x.shape[0], 1, 128, 128))
+        return x, l
+
+
+class Ae20(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        latent_size = 1024
+
+        self.enc_conv_0 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=20, stride=2, padding=0)
+        self.enc_lin_0 = torch.nn.Linear(55 * 55, 2048)
+        self.enc_lin_1 = torch.nn.Linear(2048, 1024)
+        self.enc_lin_2 = torch.nn.Linear(1024, latent_size)
+
+        self.dec_lin_0 = torch.nn.Linear(latent_size, 1024)
+        self.dec_lin_1 = torch.nn.Linear(1024, 2048)
+        self.dec_lin_2 = torch.nn.Linear(2048, 55 * 55)
+        self.dec_conv_0 = torch.nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=20, stride=2, padding=0)
+
+    def forward(self, x):
+        x = self.enc_conv_0(x)
+        x = torch.tanh(x)
+
+        x = torch.flatten(x, start_dim=1)
+        x = self.enc_lin_0(x)
+        x = torch.tanh(x)
+        x = self.enc_lin_1(x)
+        x = torch.tanh(x)
+        x = self.enc_lin_2(x)
+        x = torch.tanh(x)
+        l = x
+
+        x = self.dec_lin_0(x)
+        x = torch.tanh(x)
+        x = self.dec_lin_1(x)
+        x = torch.tanh(x)
+        x = self.dec_lin_2(x)
+        x = torch.tanh(x)
+        x = torch.reshape(x, (x.shape[0], 1, 55, 55))
+
+        x = self.dec_conv_0(x)
+        x = torch.sigmoid(x)
+        return x, l
 
 
 class Vae(torch.nn.Module):
@@ -133,6 +198,10 @@ class VaeV2(torch.nn.Module):
         return x, l
 
 
+def custom_reconstruction_loss(img_batch, recon_img_batch):
+    pass
+
+
 def latent_mean_loss(latent_batch):
     return torch.mean(torch.abs(torch.mean(latent_batch, dim=0)))
 
@@ -146,17 +215,17 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Available device: {device.type}")
 
-    square_dataset = SquareDataset(5000)
+    square_dataset = SquareDataset(50, noise=0.5)
 
-    train_dataloader = DataLoader(square_dataset, batch_size=32, shuffle=True)
+    train_dataloader = DataLoader(square_dataset, batch_size=4, shuffle=True)
     # test_dataloader = DataLoader(test_data, batch_size=64, shuffle=True)
 
-    print("Init VAE")
-    vae = VaeV2().to(device)
+    print("Init model")
+    vae = Ae20().to(device)
 
     # reconstruction_loss = torch.nn.MSELoss()
     reconstruction_loss = torch.nn.L1Loss()
-    optimizer = torch.optim.Adam(vae.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(vae.parameters(), lr=1e-2)
 
     print("Start training")
     n_epoch = 100
@@ -187,6 +256,9 @@ if __name__ == '__main__':
                 axarr[1].imshow(np.squeeze(recon_img_batch[0].detach().cpu().numpy()), vmin=0, vmax=1)
                 plt.savefig(f"epoch_{i_epoch + 1}.png")
                 plt.clf()
+
+            img_batch.cpu()
+            del img_batch
 
         avg_lml /= len(train_dataloader)
         avg_lvl /= len(train_dataloader)
