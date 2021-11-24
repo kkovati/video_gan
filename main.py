@@ -1,4 +1,5 @@
-import cairo
+# import cairo
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -25,13 +26,33 @@ class SquareDataset(torch.utils.data.Dataset):
         return img
 
 
+class GradientDataset(torch.utils.data.Dataset):
+    def __init__(self, size):
+        np.random.seed(0)
+        self.points = np.random.rand(size, 2)
+
+    def __len__(self):
+        return self.points.shape[0]
+
+    def __getitem__(self, idx):
+        x, y = (self.points[idx] * 128).astype(int)
+        img = np.zeros((128, 128), dtype=float)
+        for i in range(128):
+            for j in range(128):
+                distance = math.sqrt((x - i) ** 2 + (y - j) ** 2)
+                brightness = 1 - distance / 128
+                brightness = max(0.0, min(1.0, brightness))
+                img[j, i] = brightness
+        return img
+
+
 class DenseAe(torch.nn.Module):
     def __init__(self):
         super().__init__()
         latent_size = 2048
         self.enc_lin_0 = torch.nn.Linear(1 * 128 * 128, latent_size)
         self.dec_lin_0 = torch.nn.Linear(latent_size, 1 * 128 * 128)
-        self.dropout = torch.nn.Dropout(p=0.2)
+        # self.dropout = torch.nn.Dropout(p=0.2)
 
     def forward(self, x):
         x = torch.flatten(x, start_dim=1)
@@ -128,7 +149,7 @@ class Vae(torch.nn.Module):
 class VaeV2(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        latent_size = 128
+        latent_size = 1024
 
         self.enc_conv_0 = torch.nn.Conv2d(in_channels=1, out_channels=8, kernel_size=4, stride=2, padding=1)
         self.enc_conv_1 = torch.nn.Conv2d(in_channels=8, out_channels=8, kernel_size=4, stride=2, padding=1)
@@ -179,8 +200,6 @@ class VaeV2(torch.nn.Module):
 
         x = self.dec_lin_0(x)
         x = torch.reshape(x, (x.shape[0], 8, 4, 4))
-        # x = torch.unsqueeze(x, dim=2)
-        # x = torch.unsqueeze(x, dim=3)
 
         x = self.dec_conv_0(x)
         x = torch.nn.functional.leaky_relu(x)
@@ -215,13 +234,13 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Available device: {device.type}")
 
-    square_dataset = SquareDataset(50, noise=0.5)
+    dataset = GradientDataset(100)
 
-    train_dataloader = DataLoader(square_dataset, batch_size=4, shuffle=True)
+    train_dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     # test_dataloader = DataLoader(test_data, batch_size=64, shuffle=True)
 
     print("Init model")
-    vae = Ae20().to(device)
+    vae = VaeV2().to(device)
 
     # reconstruction_loss = torch.nn.MSELoss()
     reconstruction_loss = torch.nn.L1Loss()
